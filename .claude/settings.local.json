@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem:*)",
+      "Bash(Select-Object FullName)",
+      "Bash(npm run build:*)",
+      "Bash(if [ ! -f .env ])",
+      "Bash(then cp .env.example .env)",
+      "Bash(else echo \".env 文件已存在\")",
+      "Bash(fi)",
+      "Bash(npm install:*)",
+      "Bash(pnpm install:*)"
+    ]
+  }
+}

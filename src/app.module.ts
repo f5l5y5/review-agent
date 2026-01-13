@@ -1,10 +1,17 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { WebhookModule } from './modules/webhook/webhook.module';
 
 @Module({
-  imports: [WebhookModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
+    WebhookModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

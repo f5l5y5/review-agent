@@ -1,32 +1,45 @@
-import { Injectable } from '@nestjs/common';
-import {
-  GitLabWebhookHeaders,
+import { Injectable, Logger } from '@nestjs/common';
+import type {
   GitLabMREvent,
   WebhookProcessResult,
+  GitLabMRDiff,
 } from './interfaces';
+import { GitlabService } from './gitlab.service';
+import { AiReviewService, AIReviewResult } from './ai-review.service';
+import { NotificationService } from './notification.service';
 
 @Injectable()
 export class WebhookService {
+  private readonly logger = new Logger(WebhookService.name);
+
+  constructor(
+    private readonly gitlabService: GitlabService,
+    private readonly aiReviewService: AiReviewService,
+    private readonly notificationService: NotificationService,
+  ) {}
+
   /**
    * 处理 GitLab Merge Request 事件
    */
-  async handleMergeRequestEvent(event: GitLabMREvent): Promise<WebhookProcessResult> {
+  async handleMergeRequestEvent(
+    event: GitLabMREvent,
+    pushUrl?: string,
+    gitlabInstance?: string,
+    gitlabToken?: string,
+  ): Promise<WebhookProcessResult> {
     const mr = event.object_attributes;
 
-    console.log('=== Merge Request Details ===');
-    console.log('MR ID:', mr?.id);
-    console.log('MR IID:', mr?.iid);
-    console.log('Title:', mr?.title);
-    console.log('State:', mr?.state);
-    console.log('Action:', mr?.action);
-    console.log('Source Branch:', mr?.source_branch);
-    console.log('Target Branch:', mr?.target_branch);
-    console.log('Author:', event.user?.name);
-    console.log('Project:', event.project?.name);
+    this.logger.log('=== Merge Request Details ===');
+    this.logger.log(`MR ID: ${mr?.id}`);
+    this.logger.log(`MR IID: ${mr?.iid}`);
+    this.logger.log(`Title: ${mr?.title}`);
+    this.logger.log(`Author: ${event.user?.name}`);
+    this.logger.log(`Project: ${event.project?.name}`);
+    this.logger.log(`Push URL: ${pushUrl || 'Not provided'}`);
+    this.logger.log(`GitLab Instance: ${gitlabInstance || 'Not provided'}`);
 
-    // TODO: 在这里添加具体的业务逻辑处理
-    // 例如：代码审查、通知发送、自动化测试等
-    await this.processMergeRequest(mr, event);
+    // 处理 MR 业务逻辑
+    await this.processMergeRequest(event, pushUrl, gitlabInstance, gitlabToken);
 
     return {
       success: true,
@@ -41,53 +54,56 @@ export class WebhookService {
   }
 
   /**
-   * 处理其他类型的 GitLab 事件
-   */
-  async handleGenericEvent(
-    eventType: string,
-    event: GitLabMREvent,
-  ): Promise<WebhookProcessResult> {
-    console.log('=== Generic Event Details ===');
-    console.log('Event Type:', eventType);
-    console.log('Object Kind:', event.object_kind);
-    console.log('Event Details:', JSON.stringify(event, null, 2));
-
-    return {
-      success: true,
-      message: 'Webhook event received',
-      event_type: event.object_kind,
-    };
-  }
-
-  /**
    * 处理 Merge Request 的具体业务逻辑
    */
   private async processMergeRequest(
-    mr: GitLabMREvent['object_attributes'],
     event: GitLabMREvent,
-  ) {
-    // 这里可以添加：
-    // 1. 调用代码审查 API
-    // 2. 发送通知到钉钉/企业微信/Slack
-    // 3. 触发 CI/CD 流程
-    // 4. 更新数据库记录
-    // 5. 调用 GitLab API 添加评论等
+    pushUrl?: string,
+    gitlabInstance?: string,
+    accessToken?: string,
+  ): Promise<{ diffResult: GitLabMRDiff; reviewResult: AIReviewResult }> {
+    try {
+      // 1. 获取 MR 的 diff 内容（已过滤非代码文件）
+      const diffResult = await this.gitlabService.getMergeRequestDiffFiltered(event, gitlabInstance, accessToken);
 
-    console.log('Processing merge request business logic...');
-  }
+      this.logger.log('=== MR Diff Summary ===');
+      this.logger.log(`Project ID: ${diffResult.project_id}`);
+      this.logger.log(`MR IID: ${diffResult.mr_iid}`);
+      this.logger.log(`Total Files: ${diffResult.total_files}`);
+      this.logger.log(`Code Files: ${diffResult.code_files}`);
 
-  /**
-   * 验证 Webhook Token
-   */
-  validateToken(token: string | undefined, expectedToken: string): boolean {
-    if (!expectedToken) return true; // 如果没有配置 token，则不验证
-    return token === expectedToken;
-  }
+      // 2. 调用 AI 进行代码审查
+      const reviewResult = await this.aiReviewService.reviewMergeRequest(diffResult);
 
-  /**
-   * 获取事件类型
-   */
-  getEventType(headers: GitLabWebhookHeaders): string {
-    return headers['x-gitlab-event'] || 'unknown';
+      this.logger.log('=== AI Review Result ===');
+      this.logger.log(`Score: ${reviewResult.score}`);
+      this.logger.log(`Summary: ${reviewResult.summary}`);
+
+      // 3. 发送审查结果通知
+      await this.notificationService.sendReviewNotification(
+        {
+          event,
+          diffResult,
+          reviewResult,
+        },
+        pushUrl,
+      );
+
+      return { diffResult, reviewResult };
+    } catch (error) {
+      // 发生错误时发送失败通知
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error('代码审查失败，发送失败通知', error);
+
+      await this.notificationService.sendFailureNotification(
+        {
+          event,
+          error: errorMessage,
+        },
+        pushUrl,
+      );
+
+      throw error;
+    }
   }
 }
