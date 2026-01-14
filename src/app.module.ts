@@ -8,7 +8,6 @@ import { WebhookModule } from './modules/webhook/webhook.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
     }),
     WebhookModule,
   ],
