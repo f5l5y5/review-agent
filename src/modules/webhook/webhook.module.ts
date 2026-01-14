@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { WebhookController } from './webhook.controller';
 import { WebhookService } from './webhook.service';
-import { GitlabService } from './gitlab.service';
-import { AiReviewService } from './ai-review.service';
-import { NotificationService } from './notification.service';
-import { ConfigService } from './config.service';
+import { GitlabService } from '../gitlab';
+import { AiReviewService } from '../ai-review';
+import { NotificationService } from '../notification';
+import { ConfigService } from '../config';
 import { WebhookGuard } from './webhook.guard';
 
 @Module({

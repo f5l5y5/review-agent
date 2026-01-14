@@ -61,28 +61,3 @@ export interface WebhookProcessResult {
   event_type?: string;
   data?: any;
 }
-
-/**
- * GitLab MR 单个文件的 Diff
- */
-export interface GitLabMRDiffFile {
-  old_path: string;
-  new_path: string;
-  a_mode: string;
-  b_mode: string;
-  diff: string;
-  new_file: boolean;
-  renamed_file: boolean;
-  deleted_file: boolean;
-}
-
-/**
- * GitLab MR Diff 结果
- */
-export interface GitLabMRDiff {
-  project_id: number;
-  mr_iid: number;
-  total_files: number;
-  code_files: number;
-  diffs: GitLabMRDiffFile[];
-}

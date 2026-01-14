@@ -1,42 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { GitLabMRDiff, GitLabMRDiffFile } from './interfaces';
-import { ConfigService } from './config.service';
-
-/**
- * AI 审查结果
- */
-export interface AIReviewResult {
-  /** 总体评分 */
-  score?: number;
-  /** 总体评语 */
-  summary: string;
-  /** 各文件审查结果 */
-  fileReviews: FileReview[];
-}
-
-/**
- * 单文件审查结果
- */
-export interface FileReview {
-  /** 文件路径 */
-  filePath: string;
-  /** 审查意见 */
-  comments: string[];
-  /** 严重程度 */
-  severity?: 'low' | 'medium' | 'high';
-}
-
-/**
- * 审查模式
- */
-export enum ReviewMode {
-  /** 快速审查 - 只关注明显问题 */
-  QUICK = 'quick',
-  /** 标准审查 - 平衡详细程度和速度 */
-  STANDARD = 'standard',
-  /** 深度审查 - 详细审查所有方面 */
-  DEEP = 'deep',
-}
+import type { GitLabMRDiff } from '../gitlab';
+import type { AIReviewResult, FileReview } from './interfaces';
+import { ConfigService } from '../config';
 
 @Injectable()
 export class AiReviewService {
@@ -49,7 +14,6 @@ export class AiReviewService {
    */
   async reviewMergeRequest(
     diffResult: GitLabMRDiff,
-    mode: ReviewMode = ReviewMode.STANDARD,
   ): Promise<AIReviewResult> {
     const config = this.configService.ai;
 
@@ -58,7 +22,7 @@ export class AiReviewService {
     }
 
     this.logger.log(
-      `开始审查 MR #${diffResult.mr_iid}，共 ${diffResult.code_files} 个代码文件，模式: ${mode}`,
+      `开始审查 MR #${diffResult.iid}，共 ${diffResult.changes.length} 个代码文件`,
     );
 
     try {
@@ -68,18 +32,18 @@ export class AiReviewService {
       let result: AIReviewResult;
       if (shouldBatch) {
         this.logger.log('文件数量较多，使用分批审查');
-        result = await this.batchReviewMergeRequest(diffResult, mode);
+        result = await this.batchReviewMergeRequest(diffResult);
       } else {
-        result = await this.singleReviewMergeRequest(diffResult, mode);
+        result = await this.singleReviewMergeRequest(diffResult);
       }
 
       this.logger.log(
-        `MR #${diffResult.mr_iid} 审查完成，总体评分: ${result.score}`,
+        `MR #${diffResult.iid} 审查完成，总体评分: ${result.score}`,
       );
 
       return result;
     } catch (error) {
-      this.logger.error(`MR #${diffResult.mr_iid} 审查失败`, error);
+      this.logger.error(`MR #${diffResult.iid} 审查失败`, error);
       throw error;
     }
   }
@@ -89,10 +53,9 @@ export class AiReviewService {
    */
   private async singleReviewMergeRequest(
     diffResult: GitLabMRDiff,
-    mode: ReviewMode,
   ): Promise<AIReviewResult> {
     // 构建 AI 请求
-    const prompt = this.buildReviewPrompt(diffResult, mode);
+    const prompt = this.buildReviewPrompt(diffResult);
 
     const response = await this.callAI(prompt);
 
@@ -105,10 +68,10 @@ export class AiReviewService {
    */
   private async batchReviewMergeRequest(
     diffResult: GitLabMRDiff,
-    mode: ReviewMode,
   ): Promise<AIReviewResult> {
     const maxFiles = this.configService.review.maxFilesPerReview;
-    const batches = this.splitIntoBatches(diffResult.diffs, maxFiles);
+    const fileChanges = diffResult.changes || [];
+    const batches = this.splitIntoBatches(fileChanges, maxFiles);
 
     this.logger.log(`分为 ${batches.length} 批进行审查`);
 
@@ -121,11 +84,12 @@ export class AiReviewService {
 
       const batchDiff: GitLabMRDiff = {
         ...diffResult,
-        diffs: batch,
+        changes: batch,
         code_files: batch.length,
+        total_files: diffResult.total_files ?? fileChanges.length,
       };
 
-      const result = await this.singleReviewMergeRequest(batchDiff, mode);
+      const result = await this.singleReviewMergeRequest(batchDiff);
       batchResults.push(result);
     }
 
@@ -138,7 +102,7 @@ export class AiReviewService {
    */
   private shouldBatchProcess(diffResult: GitLabMRDiff): boolean {
     const maxFiles = this.configService.review.maxFilesPerReview;
-    return diffResult.code_files > maxFiles;
+    return diffResult.changes.length > maxFiles;
   }
 
   /**
@@ -191,11 +155,11 @@ export class AiReviewService {
    */
   private buildReviewPrompt(
     diffResult: GitLabMRDiff,
-    mode: ReviewMode,
   ): string {
-    const diffs = diffResult.diffs
+    const diffs = diffResult.changes
       .map((d) => {
-        const diffLines = this.truncateDiff(d);
+        const diffContent = d.extendedDiff || d.diff;
+        const diffLines = this.truncateDiff(diffContent);
         return `### 文件: ${d.new_path}
 ${d.new_file ? '(新文件)' : ''}${d.deleted_file ? '(已删除)' : ''}${d.renamed_file ? '(已重命名)' : ''}
 
@@ -205,7 +169,6 @@ ${diffLines}
       })
       .join('\n\n');
 
-    const reviewFocus = this.getReviewFocus(mode);
     const outputFormat = this.getOutputFormat();
 
     return `你是一个专业的代码审查助手。请审查以下 Merge Request 的代码变更。
@@ -216,78 +179,7 @@ ${diffs}
 
 ## 审查要求
 
-${reviewFocus}
-
-## 输出格式
-
-${outputFormat}
-
-请严格按照 JSON 格式返回审查结果，不要包含任何其他文本。`;
-  }
-
-  /**
-   * 截断过长的 diff
-   */
-  private truncateDiff(diff: GitLabMRDiffFile): string {
-    const maxLines = this.configService.review.maxDiffLinesPerFile;
-    const lines = diff.diff.split('\n');
-
-    if (lines.length <= maxLines) {
-      return diff.diff;
-    }
-
-    const truncatedLines = lines.slice(0, maxLines);
-    const remainingLines = lines.length - maxLines;
-
-    return `${truncatedLines.join('\n')}\n\n... (省略 ${remainingLines} 行)`;
-  }
-
-  /**
-   * 获取审查重点（根据模式）
-   */
-  private getReviewFocus(mode: ReviewMode): string {
-    switch (mode) {
-      case ReviewMode.QUICK:
-        return `请进行快速审查，重点关注：
-1. 明显的语法错误和逻辑错误
-2. 严重的安全漏洞（如 SQL 注入、XSS）
-3. 明显的性能问题
-
-评分标准：
-- 9-10分：无明显问题
-- 7-8分：有轻微问题
-- 5-6分：有中等问题
-- 1-4分：有严重问题`;
-
-      case ReviewMode.DEEP:
-        return `请进行深度审查，全面评估：
-1. 代码质量和规范性
-   - 命名规范、代码风格
-   - 函数复杂度、代码重复
-2. 潜在的 bug 和安全问题
-   - 边界条件处理
-   - 错误处理机制
-   - 安全漏洞（OWASP Top 10）
-3. 性能优化建议
-   - 算法复杂度
-   - 资源使用效率
-4. 可读性和可维护性
-   - 代码结构
-   - 注释和文档
-5. 测试覆盖
-   - 是否包含测试
-   - 测试质量
-
-评分标准：
-- 9-10分：优秀，几乎无问题
-- 7-8分：良好，有少量改进空间
-- 5-6分：一般，有明显问题需要修复
-- 3-4分：较差，有多个严重问题
-- 1-2分：很差，需要大幅重构`;
-
-      case ReviewMode.STANDARD:
-      default:
-        return `请进行标准审查，关注以下方面：
+请进行标准审查，关注以下方面：
 1. 代码质量和规范性
    - 命名是否清晰
    - 代码风格是否一致
@@ -304,8 +196,30 @@ ${outputFormat}
 - 9-10分：优秀，无明显问题
 - 7-8分：良好，有少量改进建议
 - 5-6分：一般，有需要修复的问题
-- 1-4分：较差，有严重问题`;
+- 1-4分：较差，有严重问题
+
+## 输出格式
+
+${outputFormat}
+
+请严格按照 JSON 格式返回审查结果，不要包含任何其他文本。`;
+  }
+
+  /**
+   * 截断过长的 diff
+   */
+  private truncateDiff(diffContent: string): string {
+    const maxLines = this.configService.review.maxDiffLinesPerFile;
+    const lines = diffContent.split('\n');
+
+    if (lines.length <= maxLines) {
+      return diffContent;
     }
+
+    const truncatedLines = lines.slice(0, maxLines);
+    const remainingLines = lines.length - maxLines;
+
+    return `${truncatedLines.join('\n')}\n\n... (省略 ${remainingLines} 行)`;
   }
 
   /**
@@ -409,7 +323,7 @@ ${outputFormat}
       return {
         score: 7,
         summary: this.extractSummaryFromText(response),
-        fileReviews: diffResult.diffs.map((d) => ({
+        fileReviews: diffResult.changes.map((d) => ({
           filePath: d.new_path,
           comments: ['AI 审查结果解析失败，请人工审查'],
           severity: 'low' as const,

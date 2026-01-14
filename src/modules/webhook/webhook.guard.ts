@@ -3,10 +3,11 @@ import {
   CanActivate,
   ExecutionContext,
   UnauthorizedException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from './config.service';
-import { NotificationService } from './notification.service';
+import { ConfigService } from '../config';
+import { NotificationService } from '../notification';
 
 /**
  * Webhook Token 验证守卫
@@ -57,6 +58,18 @@ export class WebhookGuard implements CanActivate {
       this.sendErrorNotification(errorMsg, 'Token 验证失败', pushUrl);
 
       throw new UnauthorizedException('Invalid webhook token');
+    }
+
+    // 验证请求体是否存在
+    const body = request.body;
+    if (!body) {
+      const errorMsg = '请求体为空';
+      this.logger.error(errorMsg);
+
+      // 发送钉钉通知
+      this.sendErrorNotification(errorMsg, '请求体验证失败', pushUrl);
+
+      throw new BadRequestException('Request body is required');
     }
 
     this.logger.log('Webhook token 验证通过');

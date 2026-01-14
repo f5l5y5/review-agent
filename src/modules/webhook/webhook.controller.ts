@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { WebhookService } from './webhook.service';
 import { WebhookGuard } from './webhook.guard';
-import { NotificationService } from './notification.service';
+import { NotificationService } from '../notification';
 import type { GitLabWebhookHeaders, GitLabMREvent } from './interfaces';
 
 @Controller('webhook')
@@ -33,11 +33,6 @@ export class WebhookController {
     const pushUrl = headers['x-push-url'];
 
     try {
-      // 验证 body 是否存在
-      if (!event) {
-        throw new BadRequestException('Request body is required');
-      }
-
       const eventType = headers['x-gitlab-event'];
       const gitlabInstance = headers['x-gitlab-instance'];
       const accessToken = headers['x-access-token'];

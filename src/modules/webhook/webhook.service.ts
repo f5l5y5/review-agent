@@ -1,12 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type {
-  GitLabMREvent,
-  WebhookProcessResult,
-  GitLabMRDiff,
-} from './interfaces';
-import { GitlabService } from './gitlab.service';
-import { AiReviewService, AIReviewResult } from './ai-review.service';
-import { NotificationService } from './notification.service';
+import type { GitLabMREvent, WebhookProcessResult } from './interfaces';
+import type { GitLabMRDiff } from '../gitlab';
+import { GitlabService } from '../gitlab';
+import { AiReviewService, AIReviewResult } from '../ai-review';
+import { NotificationService } from '../notification';
 
 @Injectable()
 export class WebhookService {
@@ -68,9 +65,10 @@ export class WebhookService {
 
       this.logger.log('=== MR Diff Summary ===');
       this.logger.log(`Project ID: ${diffResult.project_id}`);
-      this.logger.log(`MR IID: ${diffResult.mr_iid}`);
-      this.logger.log(`Total Files: ${diffResult.total_files}`);
-      this.logger.log(`Code Files: ${diffResult.code_files}`);
+      this.logger.log(`MR IID: ${diffResult.iid}`);
+      this.logger.log(`Title: ${diffResult.title}`);
+      this.logger.log(`Total Changes: ${diffResult.changes_count}`);
+      this.logger.log(`Code Files (filtered): ${diffResult.changes.length}`);
 
       // 2. 调用 AI 进行代码审查
       const reviewResult = await this.aiReviewService.reviewMergeRequest(diffResult);
@@ -78,6 +76,8 @@ export class WebhookService {
       this.logger.log('=== AI Review Result ===');
       this.logger.log(`Score: ${reviewResult.score}`);
       this.logger.log(`Summary: ${reviewResult.summary}`);
+
+      // 3. 添加gitlab MR代码评论
 
       // 3. 发送审查结果通知
       await this.notificationService.sendReviewNotification(

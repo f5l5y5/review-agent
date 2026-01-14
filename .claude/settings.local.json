@@ -9,7 +9,9 @@
       "Bash(else echo \".env 文件已存在\")",
       "Bash(fi)",
       "Bash(npm install:*)",
-      "Bash(pnpm install:*)"
+      "Bash(pnpm install:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: 实现 AI 代码审查功能\n\n- 新增 AI 审查服务，支持快速/标准/深度三种模式\n- 集成 GitLab API 获取 MR diff\n- 新增钉钉通知服务\n- 新增统一配置管理服务\n- 新增 Webhook Token 验证守卫\n- 添加 AI_TOKEN 授权支持\n- 更新项目文档\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(powershell:*)"
     ]
   }
 }

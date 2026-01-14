@@ -1,23 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { AIReviewResult } from './ai-review.service';
-import type { GitLabMREvent, GitLabMRDiff } from './interfaces';
-
-/**
- * 通知内容
- */
-export interface NotificationContent {
-  event: GitLabMREvent;
-  diffResult: GitLabMRDiff;
-  reviewResult: AIReviewResult;
-}
-
-/**
- * 失败通知内容
- */
-export interface FailureNotificationContent {
-  event: GitLabMREvent;
-  error: string;
-}
+import type { NotificationContent, FailureNotificationContent } from './interfaces';
 
 /**
  * 钉钉消息格式
@@ -53,7 +35,7 @@ export class NotificationService {
     const { event, diffResult, reviewResult } = content;
 
     this.logger.log(
-      `发送审查通知: MR #${diffResult.mr_iid}, 评分: ${reviewResult.score}`,
+      `发送审查通知: MR #${diffResult.iid}, 评分: ${reviewResult.score}`,
     );
 
     // 发送钉钉通知
@@ -223,6 +205,14 @@ export class NotificationService {
     const mrTitle = event.object_attributes?.title || '未知 MR';
     const author = event.user?.name || '未知作者';
     const mrIid = event.object_attributes?.iid || '?';
+    const codeFiles = diffResult.code_files ?? diffResult.changes?.length ?? 0;
+    const totalFiles =
+      diffResult.total_files ??
+      (typeof diffResult.changes_count === 'string'
+        ? Number(diffResult.changes_count)
+        : undefined) ??
+      diffResult.changes?.length ??
+      codeFiles;
 
     // 代码审查通知标题
     let text = `## 📋 代码审查通知 - [MR #${mrIid}] ${mrTitle}\n\n`;
@@ -247,7 +237,7 @@ export class NotificationService {
     text += `**项目**: ${projectName}\n\n`;
     text += `**MR**: [${mrTitle}](${mrUrl})\n\n`;
     text += `**作者**: ${author}\n\n`;
-    text += `**文件数**: ${diffResult.code_files} 个代码文件（总计 ${diffResult.total_files} 个文件）\n\n`;
+    text += `**文件数**: ${codeFiles} 个代码文件（总计 ${totalFiles} 个文件）\n\n`;
 
     return {
       msgtype: 'markdown',
