@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
 /**
  * 应用配置服务
  * 统一管理所有配置项
  */
 @Injectable()
-export class ConfigService {
+export class ConfigService implements OnModuleInit {
+  private readonly logger = new Logger(ConfigService.name);
+
   /**
    * GitLab 配置
    */
@@ -14,6 +16,8 @@ export class ConfigService {
     webhookToken: process.env.GITLAB_WEBHOOK_TOKEN || '',
     // API token 回退值（优先使用 x-access-token header）
     token: process.env.GITLAB_TOKEN || '',
+    // GitLab 实例基础地址（不包含 /api/v4）
+    baseUrl: (process.env.GITLAB_BASE_URL || '').replace(/\/+$/, ''),
   };
 
   /**
@@ -46,9 +50,22 @@ export class ConfigService {
       errors.push('AI_SERVICE_URL is required');
     }
 
+    if (!this.gitlab.baseUrl) {
+      errors.push('GITLAB_BASE_URL is required (e.g. https://gitlab.com)');
+    }
+
+    if (!this.gitlab.webhookToken) {
+      errors.push('GITLAB_WEBHOOK_TOKEN is required');
+    }
+
     if (errors.length > 0) {
       throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
     }
+  }
+
+  onModuleInit(): void {
+    this.validate();
+    this.logger.log('Configuration validation succeeded');
   }
 
   /**
@@ -59,6 +76,7 @@ export class ConfigService {
       gitlab: {
         hasWebhookToken: !!this.gitlab.webhookToken,
         hasToken: !!this.gitlab.token,
+        baseUrl: this.gitlab.baseUrl || 'Not configured',
       },
       ai: {
         serviceUrl: this.ai.serviceUrl,

@@ -68,7 +68,11 @@ export class GitlabService {
   ): Promise<GitLabMRDiffFile[]> {
     const config = this.configService.gitlab;
     // 使用传入的 gitlabInstance 或配置中的 apiUrl，并加上 /api/v4
-    const baseUrl = gitlabInstance;
+    const baseUrl = (gitlabInstance || this.configService.gitlab.baseUrl || '').replace(/\/+$/, '');
+    if (!baseUrl) {
+      throw new Error('GitLab base URL is not configured. Set GITLAB_BASE_URL or provide x-gitlab-instance header.');
+    }
+
     const url = `${baseUrl}/api/v4/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestIid}/changes`
     // const url = `${baseUrl}/projects/${projectId}/merge_requests/${mergeRequestIid}/diffs`;
 

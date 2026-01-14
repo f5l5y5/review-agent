@@ -21,12 +21,13 @@ npm install
 
 ```env
 # 必需配置
+GITLAB_BASE_URL=https://gitlab.com
 GITLAB_TOKEN=glpat-xxxxxxxxxxxx
+GITLAB_WEBHOOK_TOKEN=your_secret_token
 AI_SERVICE_URL=https://api.openai.com/v1/chat/completions
 AI_TOKEN=sk-xxxxxxxxxxxx
 
 # 可选配置
-GITLAB_WEBHOOK_TOKEN=your_secret_token
 AI_MODEL=gpt-4
 MAX_FILES_PER_REVIEW=20
 ```

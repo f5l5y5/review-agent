@@ -11,7 +11,8 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
-
+tmpclaude*
+nul
 # OS
 .DS_Store
 

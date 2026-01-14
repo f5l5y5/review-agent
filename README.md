@@ -29,8 +29,9 @@ pnpm run start:dev
 
 | 变量名 | 必需 | 说明 |
 |--------|------|------|
+| `GITLAB_BASE_URL` | 是 | GitLab 实例地址（不含 `/api/v4`，如 `https://gitlab.com`） |
 | `GITLAB_TOKEN` | 是 | GitLab Personal Access Token |
-| `GITLAB_WEBHOOK_TOKEN` | 否 | GitLab Webhook 验证 Token |
+| `GITLAB_WEBHOOK_TOKEN` | 是 | GitLab Webhook 验证 Token |
 | `AI_SERVICE_URL` | 是 | AI 服务 API 地址 |
 | `AI_TOKEN` | 是 | AI 服务 API Token |
 | `AI_MODEL` | 否 | AI 模型名称（默认: gpt-4） |
