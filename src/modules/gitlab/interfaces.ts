@@ -49,6 +49,11 @@ export interface GitLabMRDiff {
   // Diff 相关
   changes_count: string;
   changes: GitLabMRDiffFile[];
+  diff_refs: {
+    base_sha: string;
+    head_sha: string;
+    start_sha: string;
+  };
   /** 带行号标注的完整 diff 文本 */
   extendedContent?: string;
   /** 过滤后的代码文件数量 */

@@ -48,7 +48,11 @@ export class WebhookController {
         throw new BadRequestException('Only Merge Request events are supported');
       }
 
-      return await this.webhookService.handleMergeRequestEvent(event, pushUrl, gitlabInstance, accessToken);
+      return await this.webhookService.handleMergeRequestEvent(event, {
+        pushUrl,
+        gitlabInstance,
+        accessToken,
+      });
     } catch (error) {
       // 捕获所有错误并发送钉钉通知
       const errorMessage = error instanceof Error ? error.message : String(error);

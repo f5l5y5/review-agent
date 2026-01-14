@@ -135,6 +135,7 @@ export class GitlabService {
       this.isCodeFile(diff.new_path) || this.isCodeFile(diff.old_path),
     );
 
+    // 添加行号
     const codeDiffsWithLineNumbers = this.addLineNumbers(codeDiffs);
     const extendedContent = this.buildExtendedDiffContent(
       mrEvent.title,
@@ -334,6 +335,70 @@ export class GitlabService {
     return headers;
   }
 
-  
+  /**
+   * 发布评论到 MR 的指定行
+   */
+  async publishCommentToLine(
+    projectId: number,
+    mrIid: number,
+    newPath: string,
+    oldPath: string,
+    endLine: number,
+    issueContent: string,
+    type: 'new' | 'old',
+    diffRefs: {
+      base_sha: string;
+      head_sha: string;
+      start_sha: string;
+    },
+    gitlabInstance?: string,
+    gitlabToken?: string,
+  ): Promise<void> {
+    const baseUrl = (gitlabInstance || this.configService.gitlab.baseUrl || '').replace(/\/+$/, '');
+    if (!baseUrl) {
+      throw new Error('GitLab base URL is not configured');
+    }
+
+    const url = `${baseUrl}/api/v4/projects/${encodeURIComponent(projectId)}/merge_requests/${mrIid}/discussions`;
+
+    const position = {
+      position_type: 'text',
+      base_sha: diffRefs.base_sha,
+      head_sha: diffRefs.head_sha,
+      start_sha: diffRefs.start_sha,
+      new_path: newPath,
+      old_path: oldPath,
+      new_line: type === 'new' ? endLine : undefined,
+      old_line: type === 'old' ? endLine : undefined,
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: this.getHeaders(gitlabToken),
+        body: JSON.stringify({
+          body: issueContent,
+          position,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw Object.assign(
+          new Error(`GitLab API error: ${response.status} ${response.statusText}`),
+          {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText,
+          },
+        );
+      }
+
+      this.logger.log(`成功发布评论到 MR #${mrIid} 的 ${newPath}:${endLine}`);
+    } catch (error) {
+      this.logger.error(`发布评论失败: ${newPath}:${endLine}`, error);
+      throw error;
+    }
+  }
 
 }

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { GitLabMREvent, WebhookProcessResult } from './interfaces';
+import type { GitLabMREvent, WebhookProcessResult, MergeRequestEventOptions } from './interfaces';
 import type { GitLabMRDiff } from '../gitlab';
 import { GitlabService } from '../gitlab';
 import { AiReviewService, AIReviewResult } from '../ai-review';
@@ -20,10 +20,9 @@ export class WebhookService {
    */
   async handleMergeRequestEvent(
     event: GitLabMREvent,
-    pushUrl?: string,
-    gitlabInstance?: string,
-    gitlabToken?: string,
+    options: MergeRequestEventOptions = {},
   ): Promise<WebhookProcessResult> {
+    const { pushUrl, gitlabInstance, accessToken } = options;
     const mr = event.object_attributes;
 
     this.logger.log('=== Merge Request Details ===');
@@ -36,7 +35,7 @@ export class WebhookService {
     this.logger.log(`GitLab Instance: ${gitlabInstance || 'Not provided'}`);
 
     // 处理 MR 业务逻辑
-    await this.processMergeRequest(event, pushUrl, gitlabInstance, gitlabToken);
+    await this.processMergeRequest(event, { pushUrl, gitlabInstance, accessToken });
 
     return {
       success: true,
@@ -55,12 +54,11 @@ export class WebhookService {
    */
   private async processMergeRequest(
     event: GitLabMREvent,
-    pushUrl?: string,
-    gitlabInstance?: string,
-    accessToken?: string,
+    options: MergeRequestEventOptions = {},
   ): Promise<{ diffResult: GitLabMRDiff; reviewResult: AIReviewResult }> {
+    const { pushUrl, gitlabInstance, accessToken } = options;
     try {
-      // 1. 获取 MR 的 diff 内容（已过滤非代码文件）
+      // 1. 获取 MR 内容（已过滤非代码文件）
       const diffResult = await this.gitlabService.getMergeRequestDiffFiltered(event, gitlabInstance, accessToken);
 
       this.logger.log('=== MR Diff Summary ===');
@@ -74,12 +72,36 @@ export class WebhookService {
       const reviewResult = await this.aiReviewService.reviewMergeRequest(diffResult);
 
       this.logger.log('=== AI Review Result ===');
-      this.logger.log(`Score: ${reviewResult.score}`);
-      this.logger.log(`Summary: ${reviewResult.summary}`);
+      this.logger.log(`Found Issues: ${reviewResult.reviews.length}`);
 
-      // 3. 添加gitlab MR代码评论
+      // 3. 添加 GitLab MR 代码评论
+      if (reviewResult.reviews.length > 0) {
+        this.logger.log(`开始发布 ${reviewResult.reviews.length} 条评论到 GitLab MR`);
 
-      // 3. 发送审查结果通知
+        for (const review of reviewResult.reviews) {
+          try {
+            await this.gitlabService.publishCommentToLine(
+              diffResult.project_id,
+              diffResult.iid,
+              review.newPath,
+              review.oldPath,
+              review.endLine,
+              `**${review.issueHeader}**\n\n${review.issueContent}`,
+              review.type,
+              diffResult.diff_refs,
+              gitlabInstance,
+              accessToken,
+            );
+          } catch (error) {
+            this.logger.error(`发布评论失败: ${review.newPath}:${review.endLine}`, error);
+            // 继续发布其他评论，不中断流程
+          }
+        }
+
+        this.logger.log('评论发布完成');
+      }
+
+      // 4. 发送审查结果通知
       await this.notificationService.sendReviewNotification(
         {
           event,

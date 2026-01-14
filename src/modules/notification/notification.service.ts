@@ -35,7 +35,7 @@ export class NotificationService {
     const { event, diffResult, reviewResult } = content;
 
     this.logger.log(
-      `发送审查通知: MR #${diffResult.iid}, 评分: ${reviewResult.score}`,
+      `发送审查通知: MR #${diffResult.iid}, 发现 ${reviewResult.reviews.length} 个问题`,
     );
 
     // 发送钉钉通知
@@ -199,7 +199,6 @@ export class NotificationService {
   ): DingTalkMessage {
     const { event, diffResult, reviewResult } = content;
 
-    const scoreEmoji = this.getScoreEmoji(reviewResult.score);
     const mrUrl = event.object_attributes?.url || '';
     const projectName = event.project?.name || '未知项目';
     const mrTitle = event.object_attributes?.title || '未知 MR';
@@ -217,23 +216,28 @@ export class NotificationService {
     // 代码审查通知标题
     let text = `## 📋 代码审查通知 - [MR #${mrIid}] ${mrTitle}\n\n`;
     text += `---\n\n`;
-    text += `# ${scoreEmoji} 代码审查报告\n\n`;
-    text += `**评分**: ${reviewResult.score}/10\n\n`;
-    text += `**总体评语**: ${reviewResult.summary}\n\n`;
 
-    if (reviewResult.fileReviews.length > 0) {
+    const reviewCount = reviewResult.reviews.length;
+    const statusEmoji = reviewCount === 0 ? '✅' : reviewCount <= 3 ? '⚠️' : '❌';
+
+    text += `# ${statusEmoji} 代码审查报告\n\n`;
+    text += `**审查结果**: 发现 ${reviewCount} 个问题\n\n`;
+
+    if (reviewResult.reviews.length > 0) {
       text += `### 详细意见\n\n`;
-      reviewResult.fileReviews.forEach((review) => {
-        const emoji = this.getSeverityEmoji(review.severity);
-        text += `${emoji} **${review.filePath}**\n\n`;
-        review.comments.forEach((comment) => {
-          text += `- ${comment}\n`;
-        });
-        text += `\n`;
+      reviewResult.reviews.forEach((review) => {
+        const emoji = this.getIssueEmoji(review.issueHeader);
+        text += `${emoji} **${review.newPath}** (${review.type === 'new' ? '新代码' : '旧代码'} 第 ${review.startLine}-${review.endLine} 行)\n\n`;
+        text += `**${review.issueHeader}**\n\n`;
+        text += `${review.issueContent}\n\n`;
+        text += `---\n\n`;
       });
+    } else {
+      text += `### ✅ 未发现明显问题\n\n`;
+      text += `代码审查未发现需要特别注意的问题。\n\n`;
+      text += `---\n\n`;
     }
 
-    text += `---\n\n`;
     text += `**项目**: ${projectName}\n\n`;
     text += `**MR**: [${mrTitle}](${mrUrl})\n\n`;
     text += `**作者**: ${author}\n\n`;
@@ -308,29 +312,15 @@ export class NotificationService {
   }
 
   /**
-   * 获取评分对应的 emoji
+   * 获取问题类型对应的 emoji
    */
-  private getScoreEmoji(score?: number): string {
-    if (!score) return '⚪';
-    if (score >= 9) return '🟢';
-    if (score >= 7) return '🟡';
-    if (score >= 5) return '🟠';
-    return '🔴';
-  }
-
-  /**
-   * 获取严重程度对应的 emoji
-   */
-  private getSeverityEmoji(severity?: string): string {
-    switch (severity) {
-      case 'high':
-        return '🔴';
-      case 'medium':
-        return '🟡';
-      case 'low':
-        return '🟢';
-      default:
-        return '⚪';
-    }
+  private getIssueEmoji(issueHeader: string): string {
+    const header = issueHeader.toLowerCase();
+    if (header.includes('错误') || header.includes('bug')) return '🔴';
+    if (header.includes('安全') || header.includes('风险')) return '⚠️';
+    if (header.includes('性能')) return '⚡';
+    if (header.includes('建议') || header.includes('优化')) return '💡';
+    if (header.includes('规范') || header.includes('风格')) return '📝';
+    return '🔵';
   }
 }

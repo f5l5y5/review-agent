@@ -44,22 +44,6 @@ export interface MRReview {
  * AI 审查结果
  */
 export interface AIReviewResult {
-  /** 总体评分 */
-  score?: number;
-  /** 总体评语 */
-  summary: string;
-  /** 各文件审查结果 */
-  fileReviews: FileReview[];
-}
-
-/**
- * 单文件审查结果
- */
-export interface FileReview {
-  /** 文件路径 */
-  filePath: string;
-  /** 审查意见 */
-  comments: string[];
-  /** 严重程度 */
-  severity?: 'low' | 'medium' | 'high';
+  /** 审查结果列表 */
+  reviews: Review[];
 }

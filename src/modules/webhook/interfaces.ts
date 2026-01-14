@@ -61,3 +61,22 @@ export interface WebhookProcessResult {
   event_type?: string;
   data?: any;
 }
+
+/**
+ * 处理 Merge Request 的配置选项
+ */
+export interface HandleMergeRequestOptions {
+  event: GitLabMREvent;
+  pushUrl?: string;
+  gitlabInstance?: string;
+  accessToken?: string;
+}
+
+/**
+ * 处理 Merge Request 的额外配置选项（不包含 event）
+ */
+export interface MergeRequestEventOptions {
+  pushUrl?: string;
+  gitlabInstance?: string;
+  accessToken?: string;
+}
